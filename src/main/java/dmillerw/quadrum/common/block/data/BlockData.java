@@ -13,8 +13,8 @@ import net.minecraft.block.material.Material;
 import net.minecraft.init.Blocks;
 
 public class BlockData {
-    private Material blockMaterial;
-    private Block.SoundType blockSound;
+    private transient Material blockMaterial;
+    private transient Block.SoundType blockSound;
     @Required
     public String name = "";
     @Required

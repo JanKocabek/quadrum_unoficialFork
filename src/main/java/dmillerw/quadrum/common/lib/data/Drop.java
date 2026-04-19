@@ -7,7 +7,7 @@ import net.minecraft.util.MathHelper;
 
 public class Drop {
    private static Random random = new Random();
-   private Item dropItem;
+   private transient Item dropItem;
    public String item;
    public int damage = 0;
    public String amount = "1";
