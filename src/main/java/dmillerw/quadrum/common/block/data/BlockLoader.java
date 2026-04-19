@@ -1,0 +1,118 @@
+package dmillerw.quadrum.common.block.data;
+
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.annotations.SerializedName;
+import dmillerw.quadrum.Quadrum;
+import dmillerw.quadrum.common.lib.ExtensionFilter;
+import dmillerw.quadrum.common.lib.JsonVerification;
+import dmillerw.quadrum.common.lib.TypeSpecific;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
+import net.minecraft.block.Block;
+import org.apache.logging.log4j.Level;
+
+public class BlockLoader {
+   public static Map<String, Block> blockMap = Maps.newHashMap();
+   public static Map<String, BlockData> blockDataMap = Maps.newHashMap();
+
+   public BlockLoader() {
+   }
+
+   public static void initialize() {
+      for (File file : Quadrum.blockDir.listFiles(new ExtensionFilter("json"))) {
+         try {
+            JsonElement jsonElement = (JsonElement)Quadrum.gson.fromJson(new FileReader(file), JsonElement.class);
+            if (jsonElement != null) {
+               if (jsonElement.isJsonArray()) {
+                  for (JsonElement element : jsonElement.getAsJsonArray()) {
+                     if (element != null && element.isJsonObject() && JsonVerification.verifyRequirements(file, element.getAsJsonObject(), BlockData.class)) {
+                        parse(file.getName(), element.getAsJsonObject());
+                     }
+                  }
+               } else if (jsonElement.isJsonObject()) {
+                  parse(file.getName(), jsonElement.getAsJsonObject());
+               }
+            }
+         } catch (IOException var7) {
+            Quadrum.log(Level.WARN, "Completely failed to generate block from %s. Reason: %s", file.getName(), var7.toString());
+         }
+      }
+   }
+
+   private static void parse(String filename, JsonObject jsonObject) {
+      try {
+         BlockData blockData = (BlockData)Quadrum.gson.fromJson(jsonObject, BlockData.class);
+         List<String> keys = Lists.newArrayList();
+
+         for (Entry<String, JsonElement> entry : jsonObject.entrySet()) {
+            keys.add(entry.getKey());
+         }
+
+         for (Field field : BlockData.class.getDeclaredFields()) {
+            String name = field.getName();
+            if (field.getAnnotation(SerializedName.class) != null) {
+               name = ((SerializedName)field.getAnnotation(SerializedName.class)).value();
+            }
+
+            TypeSpecific typeSpecific = field.getAnnotation(TypeSpecific.class);
+            if (typeSpecific != null && !Arrays.asList(typeSpecific.value()).contains(blockData.getBlockType()) && keys.contains(name)) {
+               Quadrum.log(
+                  Level.INFO,
+                  "%s contains the key %s, but that key can't be applied to the %s block type. It will be ignored.",
+                  filename,
+                  name,
+                  blockData.getBlockType()
+               );
+            }
+         }
+
+         Map loweredMap = Maps.newHashMap();
+
+         for (Entry<String, String> entry : blockData.textureInfo.entrySet()) {
+            loweredMap.put(entry.getKey().toLowerCase(), entry.getValue());
+         }
+
+         blockData.textureInfo.clear();
+         blockData.textureInfo.putAll(loweredMap);
+         loweredMap.clear();
+
+         for (Entry<String, Float> entry : blockData.mobDrops.entrySet()) {
+            loweredMap.put(entry.getKey().toLowerCase(), entry.getValue());
+         }
+
+         blockData.mobDrops.clear();
+         blockData.mobDrops.putAll(loweredMap);
+         blockDataMap.put(blockData.name, blockData);
+      } catch (JsonSyntaxException var10) {
+         Quadrum.log(Level.WARN, "Ran into an issue while parsing %s. Reason: %s", filename, var10.toString());
+      }
+   }
+
+   public static void verifyDrops() {
+      for (BlockData blockData : blockDataMap.values()) {
+         List<dmillerw.quadrum.common.lib.data.Drop> dropList = Lists.newArrayList();
+
+         for (dmillerw.quadrum.common.lib.data.Drop drop : blockData.drops) {
+            if (drop.item.isEmpty()) {
+               Quadrum.log(Level.WARN, "Block %s has a drop defined, but doesn't specify an item!");
+            } else if (drop.getDrop() == null) {
+               Quadrum.log(Level.WARN, "Block %s defines %s as a drop item, but that item doesn't exist", blockData.name, drop.item);
+            } else {
+               dropList.add(drop);
+            }
+         }
+
+         blockData.drops = dropList.toArray(new dmillerw.quadrum.common.lib.data.Drop[dropList.size()]);
+      }
+   }
+}
